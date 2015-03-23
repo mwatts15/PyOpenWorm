@@ -9,7 +9,7 @@ Welcome to PyOpenWorm's documentation!
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
    process
    api
@@ -24,10 +24,12 @@ Contents:
 .. automodule:: PyOpenWorm
    :members:
 
-Issues
-------
+Questions/concerns?
+===================
 
-.. _github issue: https://github.com/openworm/PyOpenWorm/issues
+Bug reports and questions can be posted to the `issue tracker`_ on Github.
+
+.. _issue tracker: https://github.com/openworm/PyOpenWorm/issues
 
 Indices and tables
 ==================

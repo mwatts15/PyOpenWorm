@@ -107,12 +107,11 @@ def disconnect(c=False):
 
 
 def loadData(data='OpenWormData/WormData.n3', dataFormat='n3'):
-    """ 
+    """
     Load data into the underlying database of this library.
 
     :param data: (Optional) Specify the file to load into the library
     :param dataFormat: (Optional) Specify the file format to load into the library.  Currently n3 is supported
-    :return:
     """
     if data:
         sys.stderr.write("[PyOpenWorm] Loading data into the graph; this may take several minutes!!\n")
@@ -131,7 +130,6 @@ def connect(configFile='PyOpenWorm/default.conf',
     :param do_logging: (Optional) If true, turn on debug level logging
     :param data: (Optional) If provided, specify the file to load into the library
     :param dataFormat: (Optional) If provided, specify the file format to load into the library. Currently n3 is supported
-    :return:
     """
     import logging
     import atexit
