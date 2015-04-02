@@ -115,6 +115,24 @@ Returns a set of all muscles::
 
 ```
 
+Returns provenance information providing evidence about facts::
+
+```python
+  >>> ader = P.Neuron('ADER')
+  >>> s = set(ader.receptors())
+  >>> s == set(['ACR-16', 'TYRA-3', 'DOP-2', 'EXP-1'])
+  True
+
+  #look up what reference says this neuron has a receptor EXP-1
+  >>> e = P.Evidence()
+  >>> e.asserts(P.Neuron('ADER').receptor('EXP-1'))
+  asserts=`receptor=`EXP-1''
+  >>> list(e.doi())
+  '10.100.123/natneuro'
+
+```
+
+
 Add some evidence::
 ```python
   >>> e = P.Evidence(author='Sulston et al.', date='1983')
@@ -127,7 +145,7 @@ See what some evidence stated::
 ```python
   >>> e0 = P.Evidence(author='Sulston et al.', date='1983')
   >>> list(e0.asserts())
-  [Neuron(name=AVDL,lineageName=AB alaaapalr)]
+  [lineageName=]
 
 ```
 

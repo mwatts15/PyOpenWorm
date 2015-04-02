@@ -54903,6 +54903,7 @@ Neuron_receptor:a00f53dcf8272c512e0354dad232bfe56 SimpleProperty:value "EXP-1" .
 
 Evidence:natneuro_evidence_for_ader_having_exp1_expression a <http://openworm.org/entities/Evidence> ;
     Evidence:asserts Evidence_asserts:ader_has_exp1_receptor ;
+    rdfs:label "XXX: Calling Evidence::asserts on this may not work as expected" ;
     Evidence:doi Evidence_doi:natneuro_doi_having .
 
 Evidence_asserts:ader_has_exp1_receptor SimpleProperty:value Neuron_receptor:a00f53dcf8272c512e0354dad232bfe56 .
