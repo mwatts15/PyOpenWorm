@@ -220,7 +220,8 @@ class DataObject(DataUser):
         It should be as simple as converting the result of triples() into a BGP
         """
         visited_list = set()
-        return _triples_to_bgp(self.triples(query=query, visited_list=visited_list))
+        x = list(self.triples(query=query, visited_list=visited_list))
+        return _triples_to_bgp(x)
 
     def save(self):
         """ Write in-memory data to the database. Derived classes should call this to update the store. """
@@ -228,7 +229,8 @@ class DataObject(DataUser):
         ss = set()
         self.add_statements(self.triples(visited_list=ss, saving=True))
 
-    def object_from_id(self,identifier,rdf_type=False):
+    @classmethod
+    def object_from_id(cls, identifier,rdf_type=False):
         """ Load an object from the database using its type and id
 
         Parameters
@@ -245,7 +247,7 @@ class DataObject(DataUser):
         else:
             uri = identifier
 
-        cn = self._extract_class_name(uri)
+        cn = cls._extract_class_name(uri)
         # if its our class name, then make our own object
         # if there's a part after that, that's the property name
         o = _DataObjects[cn](ident=identifier)
@@ -364,7 +366,7 @@ class DataObject(DataUser):
 
             ident = self.identifier(query=True)
             ident = self._graph_variable_to_var(ident) # XXX: Assuming that this object doesn't have a set identifier
-            q = "SELECT DISTINCT {0} {0}_type where {{ {{ {1} }} . {0} rdf:type {0}_type }} ORDER BY {0}".format(ident.n3(), gp)
+            q = "SELECT DISTINCT {0} where {{ {1} }} ORDER BY {0}".format(ident.n3(), gp)
             qres = self.rdf.query(q)
             results = _QueryResultsTypeResolver(self, qres)()
             for x in results:
@@ -397,35 +399,11 @@ class _QueryResultsTypeResolver(object):
         self.qres = iter(qres) # The query results
         self.results = []
 
-    def s(self):
-        try:
-            k = next(self.qres)
-        except StopIteration as e:
-            k = (None, None)
-        return k
-
-    def g0(self, ident, types):
-        while ident is not None:
-            k = self.s()
-            n_ident = k[0]
-            n_type = k[1]
-
-            if n_ident != ident:
-                o = self.ob.object_from_id(ident, get_most_specific_rdf_type(types))
-                self.results.append(o)
-                types = [n_type]
-            else:
-                types = [n_type] + types
-            ident = n_ident
-
-    def g(self):
-        k = self.s()
-        if k[0] is None:
-            return
-        else:
-            self.g0(k[0], [k[1]])
     def __call__(self):
-        self.g()
+        for x in self.qres:
+            types = list(self.ob.rdf.objects(x, R.RDF['type']))
+            typ = get_most_specific_rdf_type(types)
+            self.results.append(DataObject.object_from_id(x, typ))
         return self.results
 
 def get_most_specific_rdf_type(types):
@@ -626,7 +604,6 @@ class SimpleProperty(Property):
 
         if isinstance(v,DataObject):
             DataObject.removeFromOpenSet(v)
-        self.add_statements([])
 
     def triples(self,*args,**kwargs):
         query=kwargs.get('query',False)
@@ -664,33 +641,6 @@ class SimpleProperty(Property):
         elif query==True:
             if self.hasVariable():
                 yield (ident, self.value_property, self._var)
-
-    def triples0(self,*args,**kwargs):
-        query=kwargs.get('query',False)
-        owner_id = self.owner.identifier(query=query)
-        ident = self.identifier(query=query)
-
-
-        if len(self._v) > 0:
-            for x in Property.triples(self,*args,**kwargs):
-                yield x
-            yield (owner_id, self.link, ident)
-            for x in self._v:
-                try:
-                    if self.property_type == 'DatatypeProperty':
-                        yield (ident, self.value_property, R.Literal(x))
-                    elif self.property_type == 'ObjectProperty':
-                        yield (ident, self.value_property, x.identifier(query=query))
-                        for t in x.triples(*args,**kwargs):
-                            yield t
-                except Exception:
-                    traceback.print_exc()
-        elif query==True:
-            # XXX: Remove this and require that we have a variable in `self._v` before
-            #      we release triples that contain variables of any kind
-            gv = self._graph_variable(self.linkName)
-            yield (owner_id, self.link, ident)
-            yield (ident, self.value_property, gv)
 
     def load(self):
         """ Loads in values to this ``Property`` which have been set for the associated owner,
