@@ -12,7 +12,6 @@ Contents:
    :maxdepth: 2
 
    process
-   api
    evidence
    making_dataObjects
    adding_data
@@ -20,6 +19,8 @@ Contents:
    docs
    rdf_format
    rdf_semantics
+
+.. _api:
 
 .. automodule:: PyOpenWorm
    :members:
