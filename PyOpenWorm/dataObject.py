@@ -399,7 +399,9 @@ class _QueryResultsTypeResolver(object):
     def __call__(self):
         results = list(self.qres)
         for x in results:
+            assert(isinstance(x, tuple) and len(x) == 1)
             x = x[0]
+
             types = list(self.ob.rdf.objects(x, R.RDF['type']))
             typ = get_most_specific_rdf_type(types)
             self.results.append(DataObject.object_from_id(x, typ))
@@ -588,7 +590,7 @@ class SimpleProperty(Property):
                     if value is not None and not DataObject._is_variable(value):
                         yield _rdf_literal_to_python(value)
                 elif self.property_type == 'ObjectProperty':
-                    for ob in _QueryResultsTypeResolver(self, [value])():
+                    for ob in _QueryResultsTypeResolver(self, [(value,)])():
                         yield ob
 
     def set(self,v):
