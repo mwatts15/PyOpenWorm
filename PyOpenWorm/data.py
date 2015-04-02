@@ -91,7 +91,7 @@ class DataUser(Configureable):
         return self.conf['rdf.namespace']
 
     @base_namespace.setter
-    def base_namespace_set(self, value):
+    def base_namespace(self, value):
         self.conf['rdf.namespace'] = value
 
     @property
@@ -101,6 +101,10 @@ class DataUser(Configureable):
     @rdf.setter
     def rdf(self, value):
         self.conf['rdf.graph'] = value
+
+    @property
+    def namespace_manager(self):
+        return self.conf['rdf.namespace_manager']
 
     def _remove_from_store(self, g):
         # Note the assymetry with _add_to_store. You must add actual elements, but deletes

@@ -95,10 +95,7 @@ class DataObject(DataUser):
         return isinstance(other,DataObject) and (self.identifier() == other.identifier())
 
     def __str__(self):
-        s = self.__class__.__name__ + "("
-        s +=  ", ".join(str(x) for x in self.properties if x.hasValue())
-        s += ")"
-        return s
+        return self.namespace_manager.normalizeUri(self.identifier())
 
     def __repr__(self):
         return self.__str__()
@@ -402,6 +399,7 @@ class _QueryResultsTypeResolver(object):
     def __call__(self):
         results = list(self.qres)
         for x in results:
+            x = x[0]
             types = list(self.ob.rdf.objects(x, R.RDF['type']))
             typ = get_most_specific_rdf_type(types)
             self.results.append(DataObject.object_from_id(x, typ))
@@ -571,7 +569,7 @@ class SimpleProperty(Property):
                 if self.property_type == 'DatatypeProperty':
                     q = u"SELECT DISTINCT {0} where {{ {1} . }}".format(self._var.n3(), gp)
                 elif self.property_type == 'ObjectProperty':
-                    q = "SELECT DISTINCT {0} {0}_type where {{ {{ {1} }} . {0} rdf:type {0}_type }} ORDER BY {0}".format(self._var.n3(), gp)
+                    q = "SELECT DISTINCT {0} where {{ {{ {1} }} . {0} rdf:type {0}_type }} ORDER BY {0}".format(self._var.n3(), gp)
                 else:
                     raise Exception("Inappropriate property type "+self.property_type+" in SimpleProperty::get")
             finally:
@@ -590,11 +588,7 @@ class SimpleProperty(Property):
                     if value is not None and not DataObject._is_variable(value):
                         yield _rdf_literal_to_python(value)
                 elif self.property_type == 'ObjectProperty':
-                    constructed_qres = set()
-                    for rdf_type in self.rdf.objects(value, R.RDF['type']):
-                        constructed_qres.add((value, rdf_type))
-
-                    for ob in _QueryResultsTypeResolver(self, constructed_qres)():
+                    for ob in _QueryResultsTypeResolver(self, [value])():
                         yield ob
 
     def set(self,v):
