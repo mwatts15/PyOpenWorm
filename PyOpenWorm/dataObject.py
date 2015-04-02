@@ -400,7 +400,8 @@ class _QueryResultsTypeResolver(object):
         self.results = []
 
     def __call__(self):
-        for x in self.qres:
+        results = list(self.qres)
+        for x in results:
             types = list(self.ob.rdf.objects(x, R.RDF['type']))
             typ = get_most_specific_rdf_type(types)
             self.results.append(DataObject.object_from_id(x, typ))

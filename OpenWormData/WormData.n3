@@ -54898,6 +54898,18 @@ Neuron_receptor:a64a8f903596c1498935c49fb7629d908 SimpleProperty:value "ACR-16",
         "EXP-1",
         "TYRA-3" .
 
+Neuron_receptor:a00f53dcf8272c512e0354dad232bfe56 SimpleProperty:value "EXP-1" .
+
+
+Evidence:natneuro_evidence_for_ader_having_exp1_expression a <http://openworm.org/entities/Evidence> ;
+    Evidence:asserts Evidence_asserts:ader_has_exp1_receptor ;
+    Evidence:doi Evidence_doi:natneuro_doi_having .
+
+Evidence_asserts:ader_has_exp1_receptor SimpleProperty:value Neuron_receptor:a00f53dcf8272c512e0354dad232bfe56 .
+
+Evidence_doi:natneuro_doi_having SimpleProperty:value "10.100.123/natneuro" .
+
+
 Neuron_receptor:a66baba4e9a8a02d60d082f60704b3245 SimpleProperty:value "GCY-12",
         "NPR-1",
         "OCR-2",
@@ -57239,6 +57251,7 @@ Neuron:abc40dbbe771f12588831c9ea26c8ba63 a <http://openworm.org/entities/Neuron>
     Cell:name Cell_name:a9fb12250b0151d5e89b42a4f3d2ada84 ;
     Neuron:innexin Neuron_innexin:ad055b9093472a31804cd95725a545a56 ;
     Neuron:receptor Neuron_receptor:ad3b8b0060878bef6b10e26587f3a053a ;
+    Neuron:receptor Neuron_receptor:a00f53dcf8272c512e0354dad232bfe56 ;
     Neuron:type Neuron_type:aa968ab417368a3447bb0dfdcc3598104 .
 
 Neuron:a062b811b1e4c9c80e0782045974785ea a <http://openworm.org/entities/Neuron> ;
