@@ -106,7 +106,7 @@ class DataObject(GraphObject, DataUser):
 
     def __eq__(self, other):
         return (isinstance(other, DataObject) and
-                (self.identifier() == other.identifier()))
+                (self.idl == other.idl))
 
     def load(self):
         for ident in GraphObjectQuerier(self, self.rdf)():
