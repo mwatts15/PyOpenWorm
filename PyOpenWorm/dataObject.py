@@ -7,9 +7,9 @@ from yarom.graphObject import GraphObject, ComponentTripler, GraphObjectQuerier
 from yarom.rdfUtils import triples_to_bgp, deserialize_rdflib_term
 from yarom.rdfTypeResolver import RDFTypeResolver
 from .configure import BadConf
-from .simpleProperty import DatatypeProperty, SimpleProperty
+from .simpleProperty import DatatypeProperty, ObjectProperty
 from .data import DataUser
-from .fakeProperty import FakeProperty
+#from .fakeProperty import FakeProperty
 
 __all__ = [
     "DataObject",
@@ -185,6 +185,24 @@ class DataObject(GraphObject, DataUser):
             **kwargs)
 
     @classmethod
+    def UnionProperty(cls, *args, **kwargs):
+        """ Create a SimpleProperty that has a complex DataObject as its value
+
+        Parameters
+        ----------
+        linkName : string
+            The name of this Property.
+        owner : PyOpenWorm.dataObject.DataObject
+            The name of this Property.
+        value_type : type
+            The type of DataObject for values of this property
+        """
+        return cls._create_property(
+            *args,
+            property_type='UnionProperty',
+            **kwargs)
+
+    @classmethod
     def _create_property(
             cls,
             linkName,
@@ -205,13 +223,19 @@ class DataObject(GraphObject, DataUser):
         if property_class_name in PropertyTypes:
             c = PropertyTypes[property_class_name]
         else:
+            base = None
             if property_type == 'ObjectProperty':
                 value_rdf_type = value_type.rdf_type
+                base = ObjectProperty
+            elif property_type == 'UnionProperty':
+                value_rdf_type = False
+                base = ObjectProperty
             else:
                 value_rdf_type = False
+                base = DatatypeProperty
             link = owner_class.rdf_namespace[linkName]
             c = type(property_class_name,
-                     (SimpleProperty,),
+                     (base,),
                      dict(linkName=linkName,
                           link=link,
                           property_type=property_type,
@@ -220,7 +244,7 @@ class DataObject(GraphObject, DataUser):
                           owner_type=owner_class,
                           multiple=multiple))
             PropertyTypes[property_class_name] = c
-            c.register()
+            #c.register()
         return cls.attach_property(owner, c)
 
     @classmethod
@@ -256,16 +280,16 @@ class DataObject(GraphObject, DataUser):
     @classmethod
     def attach_property(self, owner, c):
         # The fake property has the object as owner and the property as value
-        res = c(owner=owner, resolver=_Resolver.get_instance())
+        #res = c(owner=owner, resolver=_Resolver.get_instance())
         # XXX: Hack for graph object traversal of properties while still
         #      allowing to refer to the PyOpenWorm properties.
 
-        fp = FakeProperty(res)
+        #fp = FakeProperty(res)
         # ... and the properties of the owner only list the FakeProperty
-        owner.properties.append(fp)
-        setattr(owner, c.linkName, res)
+        #owner.properties.append(res)
+        #setattr(owner, c.linkName, res)
 
-        return res
+        return self.attach_property_ex(owner, c)
 
     def graph_pattern(self, shorten=False):
         """ Get the graph pattern for this object.

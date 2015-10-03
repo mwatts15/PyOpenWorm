@@ -40,7 +40,7 @@ class Worm(DataObject):
     """
 
     def __init__(self, scientific_name=False, **kwargs):
-        super(Worm,self).__init__(**kwargs)
+        super(Worm, self).__init__(**kwargs)
         self.name = Worm.DatatypeProperty("scientific_name", owner=self)
         Worm.ObjectProperty(
             "muscle",
@@ -94,11 +94,7 @@ class Worm(DataObject):
         :returns: A set of all muscles
         :rtype: set
          """
-        return set(x for x in self._muscles_helper())
-
-    def _muscles_helper(self):
-        for x in self.muscle.get():
-            yield x
+        return set(self.muscle())
 
     def get_semantic_net(self):
         """
@@ -111,7 +107,7 @@ class Worm(DataObject):
         return self.rdf
 
     def defined(self):
-        return super(Worm,self).defined or self.name.has_defined_value()
+        return super(Worm, self).defined or self.name.has_defined_value()
 
     def identifier(self, *args, **kwargs):
         # If the DataObject identifier isn't variable, then self is a specific
@@ -122,6 +118,6 @@ class Worm(DataObject):
         # be returned
 
         if super(Worm, self).defined:
-            return super(Worm,self).identifier()
+            return super(Worm, self).identifier()
         else:
             return self.make_identifier(self.name.defined_values[0])

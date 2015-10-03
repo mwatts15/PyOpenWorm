@@ -32,6 +32,7 @@ class RealSimpleProperty(object):
         self.conf = conf
         self._v = _values()
         self.owner = owner
+        self.rdf_object = PropertyURIObject(self.link)
 
     def hasValue(self):
         return len(self._v) > 0
@@ -43,6 +44,9 @@ class RealSimpleProperty(object):
         return False
 
     def set(self, v):
+        if isinstance(v, Rel):
+            v = v.rel()
+
         if not hasattr(v, "idl"):
             v = PropertyValue(v)
 
@@ -54,6 +58,7 @@ class RealSimpleProperty(object):
         else:
             self._v = _values()
             self._v.add(v)
+        return Rel(self.owner, self, v)
 
     @property
     def defined_values(self):
@@ -77,6 +82,43 @@ class RealSimpleProperty(object):
     def unset(self, v):
         self._v.remove(v)
         v.owner_properties.remove(self)
+
+    def __call__(self, *args, **kwargs):
+        """ If arguments are passed to the ``Property``, its ``set`` method
+        is called. Otherwise, if the object has values set on it, then its
+        ``defined_values`` are returned. If no arguments are passed and no
+        values have been set, then the ``get`` method is called. If the
+        ``multiple`` member for the ``Property`` is set to ``True``, then a
+        Python set containing the values is returned. Otherwise, a single bare
+        value is returned.
+        """
+
+        if len(args) > 0 or len(kwargs) > 0:
+            return self.set(*args, **kwargs)
+        else:
+            if self.has_defined_value():
+                if self.property_type == 'ObjectProperty':
+                    r = self.defined_values
+                else:
+                    r = [deserialize_rdflib_term(x.idl) for x in self.defined_values]
+            else:
+                r = self.get(*args, **kwargs)
+
+            if self.multiple:
+                return set(r)
+            else:
+                try:
+                    return next(iter(r))
+                except StopIteration:
+                    return None
+    def one(self):
+        l = list(self.get())
+        if len(l) > 0:
+            return l[0]
+        else:
+            return None
+
+
 
 
 class _ValueProperty(RealSimpleProperty):
@@ -107,11 +149,10 @@ class _ValueProperty(RealSimpleProperty):
 class _ObjectPropertyMixin(ObjectPropertyMixin):
 
     def set(self, v):
-        from .dataObject import DataObject
-        if not isinstance(v, (SimpleProperty, DataObject, Variable)):
+        if not isinstance(v, (Rel, GraphObject)):
             raise Exception(
-                "An ObjectProperty only accepts DataObject, SimpleProperty"
-                "or Variable instances. Got a " + str(type(v)) + " aka " +
+                "An ObjectProperty only accepts GraphObjects."
+                " Got a " + str(type(v)) + " aka " +
                 str(type(v).__bases__))
         return super(ObjectPropertyMixin, self).set(v)
 
@@ -254,3 +295,45 @@ class SimpleProperty(GraphObject, DataUser):
         cls.rdf_type = cls.conf['rdf.namespace'][cls.__name__]
         cls.rdf_namespace = R.Namespace(cls.rdf_type + "/")
         cls.conf['rdf.namespace_manager'].bind(cls.__name__, cls.rdf_namespace)
+
+class Rel(tuple):
+
+    """ A container for a relationship-assignment """
+    _map = dict(s=0, p=1, o=2)
+
+    def __new__(cls, s, p, o):
+        return super(Rel, cls).__new__(cls, (s, p, o))
+
+    def __getattr__(self, n):
+        return self[Rel._map[n]]
+
+    def rel(self):
+        from .relationship import Relationship
+        return Relationship(
+            subject=self.s,
+            property=self.p.rdf_object,
+            object=self.o)
+
+class PropertyURIObject(GraphObject):
+    def __init__(self, ident):
+        super(PropertyURIObject, self).__init__()
+        self.ident = ident
+
+    def identifier(self):
+        return self.ident
+
+    def variable(self):
+        return None
+
+    @property
+    def defined(self):
+        return True
+
+    def __hash__(self):
+        return hash(self.ident)
+
+    def __str__(self):
+        return str(self.ident)
+
+    def __repr__(self):
+        return "PropertyURIObject("+repr(self.ident)+")"

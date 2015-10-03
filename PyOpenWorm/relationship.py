@@ -1,21 +1,45 @@
-from __future__ import print_function
-from itertools import chain
 from .dataObject import DataObject
 
-# Relationships correspond to a subgraph in the database.
-# Consequently, they can be reduced to or built up from a
-#  set of triples.
 class Relationship(DataObject):
-    """Relationships relate two or more DataObjects
-    """
-    def __init__(self,triples=None,graph=None,**kwargs):
-        super(Relationship,self).__init__(**kwargs)
-        if triples is None:
-            triples = []
+    """ A Relationship is typically related to a property and is an object that
+        one points to for talking about the property relationship.
 
-        if graph is not None:
-            self._triples = []
-            for trip in graph:
-                self._triples.append(trip)
+        For SimpleProperty objects, this acts like a RDF Reified triple.
+        """
+    def __init__(self, subject=None, property=None, object=None, **kwargs):
+        super(Relationship, self).__init__(**kwargs)
+        self.ObjectProperty('subject', owner=self)
+        self.ObjectProperty('property', owner=self)
+        self.UnionProperty('object', owner=self)
+
+        if subject is not None:
+            self.subject(subject)
+
+        if property is not None:
+            self.property(property)
+
+        if object is not None:
+            self.object(object)
+
+    def _ident_data(self):
+        return [self.subject.defined_values,
+                self.property.defined_values,
+                self.object.defined_values]
+
+    def defined(self):
+        if super(Relationship, self).defined:
+            return True
         else:
-            self._triples = triples
+            for p in self._ident_data():
+                if len(p) == 0:
+                    return False
+            return True
+
+    def identifier(self):
+        if super(Relationship, self).defined:
+            return super(Relationship, self).identifier()
+        else:
+            data = self._ident_data()
+            data = tuple(x[0].identifier().n3() for x in data)
+            data = "".join(data)
+            return self.make_identifier(data)
