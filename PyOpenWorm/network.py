@@ -17,7 +17,7 @@ class Network(DataObject):
         Returns a set of all synapses in the network
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, worm=None, **kwargs):
         super(Network, self).__init__(**kwargs)
         self.synapses = Network.ObjectProperty(
             'synapse',
@@ -34,6 +34,9 @@ class Network(DataObject):
             owner=self,
             value_type=P.Worm,
             multiple=False)
+
+        if worm is not None:
+            self.worm(worm)
 
     def neuron_names(self):
         """
