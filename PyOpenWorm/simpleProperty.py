@@ -60,6 +60,12 @@ class RealSimpleProperty(object):
             self._v.add(v)
         return Rel(self.owner, self, v)
 
+    def relationships(self):
+        res = []
+        for v in self._v:
+            res.append(Rel(self.owner, self, v))
+        return res
+
     @property
     def defined_values(self):
         return tuple(x for x in self._v if x.defined)
@@ -79,6 +85,12 @@ class RealSimpleProperty(object):
         self.unset(v)
         return results
 
+    def count(self):
+        res = 0
+        for _ in self.get():
+            res += 1
+        return res
+
     def unset(self, v):
         self._v.remove(v)
         v.owner_properties.remove(self)
@@ -97,7 +109,7 @@ class RealSimpleProperty(object):
             return self.set(*args, **kwargs)
         else:
             if self.has_defined_value():
-                if self.property_type == 'ObjectProperty':
+                if isinstance(self, _ObjectPropertyMixin):
                     r = self.defined_values
                 else:
                     r = [deserialize_rdflib_term(x.idl) for x in self.defined_values]
@@ -117,8 +129,6 @@ class RealSimpleProperty(object):
             return l[0]
         else:
             return None
-
-
 
 
 class _ValueProperty(RealSimpleProperty):
@@ -194,6 +204,7 @@ class SimpleProperty(GraphObject, DataUser):
                 resolver=resolver)
 
         self.properties.append(self._pp)
+        self.owner_properties = [self]
         self._defined_values_cache = None
         self._defined_values_string_cache = None
 
