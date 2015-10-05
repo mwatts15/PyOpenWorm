@@ -4,14 +4,13 @@ from .dataObject import DataObject
 from .muscle import Muscle
 from .cell import Cell
 from .network import Network
-from .simpleProperty import SimpleProperty
+from .simpleProperty import ObjectProperty
 
 
-class NeuronNetworkProperty(SimpleProperty):
+class NeuronNetworkProperty(ObjectProperty):
     value_type = Network
     linkName = 'neuron_network'
     multiple = False
-    property_type = 'ObjectProperty'
 
     def __init__(self, **kwargs):
         super(NeuronNetworkProperty, self).__init__(**kwargs)
@@ -20,7 +19,8 @@ class NeuronNetworkProperty(SimpleProperty):
 
     def set(self, v):
         super(NeuronNetworkProperty, self).set(v)
-        v.worm(self.owner)
+        if isinstance(v, Network):
+            v.worm(self.owner)
 
 
 class Worm(DataObject):
