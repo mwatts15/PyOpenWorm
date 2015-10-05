@@ -296,16 +296,14 @@ class DataIntegrityTest(unittest.TestCase):
         self.maxDiff = None
         self.assertEqual(sorted(pow_conns), sorted(xls_conns))
 
-    #@unittest.skip("deprecated due to performance")
     def test_all_cells_have_wormbaseID(self):
         """ This test verifies that every cell has a Wormbase ID. """
         cells = set(PyOpenWorm.Cell().load())
         for cell in cells:
             wbid = cell.wormbaseID()
-            self.assertIsNotNone(wbid)
+            self.assertIsNotNone(wbid, msg=cell.identifier())
             self.assertNotEqual(wbid, '')
 
-    #@unittest.skip("deprecated due to performance")
     def test_all_neurons_are_cells(self):
         """ This test verifies that all Neuron objects are also Cell objects. """
         net = PyOpenWorm.Worm().get_neuron_network()
@@ -313,20 +311,20 @@ class DataIntegrityTest(unittest.TestCase):
         for neuron_object in net.neurons():
             self.assertIsInstance(neuron_object, PyOpenWorm.Cell)
 
-    #@unittest.skip("deprecated due to performance")
     def test_all_muscles_are_cells(self):
         """ This test verifies that all Muscle objects are also Cell objects. """
         muscles = PyOpenWorm.Worm().muscles()
         for muscle_object in muscles:
             self.assertIsInstance(muscle_object, PyOpenWorm.Cell)
 
-    @unittest.skip("deprecated due to performance")
     def test_correct_connections_number(self):
         """ This test verifies that there are exactly 6916 connections. """
         net = PyOpenWorm.Worm().get_neuron_network()
-        self.assertEqual(6916, len(net.synapses()))
+        conn = PyOpenWorm.Connection()
+        net.synapse(conn)
+        self.assertEqual(6916, conn.count())
 
-    @unittest.skip("deprecated due to performance")
+    @unittest.skip("TODO: correct. rewrite to do one connection query in the loop")
     def test_connection_content_matches(self):
         """ This test verifies that the content of each connection matches the
         content in the source. """
@@ -358,51 +356,40 @@ class DataIntegrityTest(unittest.TestCase):
 
         self.assertTrue(csv_tuples.issubset(synapse_tuples))
 
-    @unittest.skip("deprecated due to performance")
     def test_number_neuron_to_neuron(self):
         """
         This test verifies that the worm model has exactly 5805 neuron to neuron
         connections.
         """
-        synapses = PyOpenWorm.Worm().get_neuron_network().synapses()
-        count = 0
+        conn = PyOpenWorm.Connection()
+        conn.termination('neuron')
+        PyOpenWorm.Worm().get_neuron_network().synapse(conn)
 
-        for synapse in synapses:
-            if synapse.termination() == 'neuron':
-                count += 1
+        self.assertEqual(5805, conn.count())
 
-        self.assertEqual(5805, count)
-
-    @unittest.skip("deprecated due to performance")
     def test_number_neuron_to_muscle(self):
         """
         This test verifies that the worm model has exactly 1111 neuron to muscle
         connections.
         """
-        synapses = PyOpenWorm.Worm().get_neuron_network().synapses()
-        count = 0
+        conn = PyOpenWorm.Connection()
+        conn.termination('muscle')
+        PyOpenWorm.Worm().get_neuron_network().synapse(conn)
 
-        for synapse in synapses:
-            if synapse.termination() == 'muscle':
-                count += 1
+        self.assertEqual(1111, conn.count())
 
-        self.assertEqual(1111, count)
-
-    @unittest.skip("deprecated due to performance")
     def test_correct_number_unique_neurons(self):
         """
         This test verifies that the worm model has exactly 300 unique neurons
         making connections.
         """
-        synapses = PyOpenWorm.Worm().get_neuron_network().synapses()
-        unique_neurons = set()    # set of unique neurons
-
-        for synapse in synapses:
-            unique_neurons.add(synapse.pre_cell())    # set won't count duplicates
-
+        n = PyOpenWorm.Neuron()
+        conn = PyOpenWorm.Connection()
+        conn.pre_cell(n)
+        PyOpenWorm.Worm().get_neuron_network().synapse(conn)
+        unique_neurons = set(n.load())
         self.assertEqual(300, len(unique_neurons))
 
-    #@unittest.skip("deprecated due to performance")
     def test_unconnected_neurons(self):
         """
         This test verifies that there are exactly 2 unconnected neurons,
@@ -413,22 +400,12 @@ class DataIntegrityTest(unittest.TestCase):
         # That means it should be enough to check that the set {CANL, CANR} and
         # the set of neurons making connections are disjoint.
 
-        #net = PyOpenWorm.Worm().get_neuron_network()
-        #conn = PyOpenWorm.Connection()
-        #c = PyOpenWorm.Cell()
-        #net.synapse(conn)
-        #conn.pre_cell(c)
-        neur = PyOpenWorm.Neuron()
-        expected = {'CANL', 'CANR'}
-        actual = set()
-        for n in neur.name.get():
-            try:
-                conn = PyOpenWorm.Connection()
-                neu = PyOpenWorm.Neuron(name=n)
-                conn.pre_cell(neu)
+        unconnected = {'CANL', 'CANR'}
 
-                next(conn.load())
-            except StopIteration:
-                actual.add(n)
+        n = PyOpenWorm.Neuron()
+        conn = PyOpenWorm.Connection()
+        conn.pre_cell(n)
+        PyOpenWorm.Worm().get_neuron_network().synapse(conn)
+        connected = set(n.name())
 
-        self.assertEqual(expected, actual)
+        self.assertEqual(unconnected & connected, set([]))
