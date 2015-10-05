@@ -47,7 +47,7 @@ def upload_muscles():
         with open(CELL_NAMES_SOURCE) as csvfile:
             csvreader = csv.reader(csvfile)
 
-            ev = P.Evidence(title="C. elegans Cell List - WormBase.csv")
+            ev = P.Evidence(key="WormBase_cell_list", title="C. elegans Cell List - WormBase.csv")
             w = WORM
             for num, line in enumerate(csvreader):
                 if num < 4:  # skip rows with no data
@@ -56,6 +56,8 @@ def upload_muscles():
                 if line[7] or line[8] or line[9] == '1':  # muscle's marked in these columns
                     muscle_name = normalize(line[0]).upper()
                     m = P.Muscle(name=muscle_name)
+                    wbid = line[19]
+                    m.wormbaseID(wbid)
                     w.muscle(m)
             ev.asserts(w)
         #second step, get the relationships between them and add them to the graph
@@ -113,13 +115,13 @@ def upload_lineage_and_descriptions():
              data[name] = {"lineageName" : lineageName, "desc": desc}
 
         def add_data_to_cell(n):
-            name = n.name.one()
+            name = n.name.defined_values[0]
             cell_data = data[str(name)]
             n.lineageName(cell_data['lineageName'])
             n.description(cell_data['desc'])
             w.cell(n)
 
-        for n in net.neurons():
+        for n in net.neurons.defined_values:
             add_data_to_cell(n)
 
         # TODO: Add data for other cells here. Requires relating named
@@ -144,10 +146,8 @@ def norn(x):
 def upload_neurons():
     try:
         #TODO: Improve this evidence marker
-        ev = P.Evidence(title="C. elegans Cell List - WormBase.csv")
-        w = WORM
+        ev = P.Evidence(key="WormBase_cell_list", title="C. elegans Cell List - WormBase.csv")
         n = NETWORK
-        w.neuron_network(n)
         # insert neurons.
         i = 0
         with open(CELL_NAMES_SOURCE) as csvfile:
@@ -159,7 +159,10 @@ def upload_neurons():
 
                 if line[5] == '1':  # neurons marked in this column
                     neuron_name = normalize(line[0]).upper()
-                    n.neuron(P.Neuron(name=neuron_name))
+                    neur = P.Neuron(name=neuron_name)
+                    wbid = line[19]
+                    neur.wormbaseID(wbid)
+                    n.neuron(neur)
                     i = i + 1
 
         ev.asserts(n)
@@ -246,6 +249,8 @@ def upload_receptors_types_neurotransmitters_neuropeptides_innexins():
 
       elif 'wormatlas' in evidence.lower():
           e = wormatlas_ev
+      else:
+          raise Exception("Unknown evidence for row #{0} {1}".format(i, row))
 
       e2 = []
       try:
@@ -333,13 +338,12 @@ def upload_connections():
     # muscle cells that have different names in connectome source and cell list. Their wormbase cell list names will be used in PyOpenWorm
     changed_muscles = ['ANAL', 'INTR', 'INTL', 'SPH']
 
-    def changed_muscle(x):
-        return {
-            'ANAL': 'MU_ANAL',
-            'INTR': 'MU_INT_R',
-            'INTL': 'MU_INT_L',
-            'SPH': 'MU_SPH'
-        }[x]
+    changed_muscle = {
+        'ANAL': 'MU_ANAL',
+        'INTR': 'MU_INT_R',
+        'INTL': 'MU_INT_L',
+        'SPH': 'MU_SPH'
+    }
 
     # cells that are neither neurons or muscles. These are marked as 'Other Cells' in the wormbase cell list but are still part of the new connectome. In future work these should be uploaded seperately to PyOpenWorm in a new upload function and should be referred from there instead of this list.
     other_cells = ['MC1DL', 'MC1DR', 'MC1V', 'MC2DL', 'MC2DR', 'MC2V', 'MC3DL', 'MC3DR','MC3V']
@@ -356,15 +360,11 @@ def upload_connections():
 
         neuron_objs = list(set(n.neurons()))
         muscle_objs = list(w.muscles())
-
-        w.neuron_network(n)
-
         # get lists of neuron and muscles names
         neurons = [neuron.name() for neuron in neuron_objs]
         muscles = [muscle.name() for muscle in muscle_objs]
-
         # Evidence object to assert each connection
-        e = P.Evidence(title='herm_full_edgelist.csv')
+        e = P.Evidence(key='herm_full_edgelist', title='herm_full_edgelist.csv')
 
         with open(CONNECTOME_SOURCE) as csvfile:
             edge_reader = csv.reader(csvfile)
@@ -392,9 +392,9 @@ def upload_connections():
 
                 # change certain muscle names to names in wormbase
                 if source in changed_muscles:
-                    source = changed_muscle(source)
+                    source = changed_muscle[source]
                 if target in changed_muscles:
-                    target = changed_muscle(target)
+                    target = changed_muscle[target]
 
                 def marshall(name):
                     ret = []
