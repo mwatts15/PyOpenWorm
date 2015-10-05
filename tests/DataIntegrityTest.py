@@ -6,7 +6,7 @@ import PyOpenWorm
 from PyOpenWorm import Configure
 import rdflib as R
 
-from GraphDBInit import delete_zodb_data_store
+#from GraphDBInit import delete_zodb_data_store
 
 class DataIntegrityTest(unittest.TestCase):
 
@@ -17,13 +17,12 @@ class DataIntegrityTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         import csv
-        PyOpenWorm.connect(
-            conf=Configure(
-                **{'rdf.store_conf': 'tests/test.db', 'rdf.source': 'ZODB'}))
-        PyOpenWorm.loadData(skipIfNewer=False)
-        PyOpenWorm.disconnect()
-        # grab the list of the names of the 302 neurons
-
+        #PyOpenWorm.connect(
+            #conf=Configure(
+                #**{'rdf.store_conf': 'tests/test.db', 'rdf.source': 'ZODB'}))
+        #PyOpenWorm.loadData(skipIfNewer=False)
+        #PyOpenWorm.disconnect()
+        ## grab the list of the names of the 302 neurons
         csvfile = open('OpenWormData/aux_data/neurons.csv', 'r')
         reader = csv.reader(csvfile, delimiter=';', quotechar='|')
 
@@ -36,16 +35,16 @@ class DataIntegrityTest(unittest.TestCase):
     def setUp(self):
         PyOpenWorm.connect(
             conf=Configure(
-                **{'rdf.store_conf': 'tests/test.db', 'rdf.source': 'ZODB'}))
+                **{'rdf.store_conf': 'tests/worm.db', 'rdf.source': 'ZODB'}))
         self.g = PyOpenWorm.config("rdf.graph")
 
     def tearDown(self):
         PyOpenWorm.disconnect()
 
 
-    @classmethod
-    def tearDownClass(cls):
-        delete_zodb_data_store("tests/test.db")
+    #@classmethod
+    #def tearDownClass(cls):
+        #delete_zodb_data_store("tests/test.db")
 
     def test_correct_neuron_number(self):
         """
@@ -87,8 +86,9 @@ class DataIntegrityTest(unittest.TestCase):
         for n in self.neurons:
             # Create a SPARQL query per neuron that looks for all RDF nodes that
             # have text matching the name of the neuron
+            cell_name_property = '<http://openworm.org/entities/Cell/name>'
             qres = self.g.query(
-                'SELECT distinct ?n WHERE {?n ?t ?s . ?s ?p \"' +
+                'SELECT distinct ?n WHERE {?n ' + cell_name_property + ' \"' +
                 n +
                 '\" } LIMIT 5')
             results[n] = (len(qres.result), [x[0] for x in qres.result])
@@ -116,13 +116,9 @@ class DataIntegrityTest(unittest.TestCase):
         """
         results = set()
         for n in self.neurons:
-            qres = self.g.query('SELECT ?v WHERE { ?s <http://openworm.org/entities/SimpleProperty/value> \"' + n + '\". '  # per node ?s that has the name of a neuron associated
-                                + '?k <http://openworm.org/entities/Cell/name> ?s .'
-                                # look up its listed type ?o
-                                + '?k <http://openworm.org/entities/Neuron/type> ?o .'
-                                # for that type ?o, get its property ?tp and its
-                                # value ?v
-                                + '?o <http://openworm.org/entities/SimpleProperty/value> ?v } '
+            qres = self.g.query('SELECT ?v WHERE { ?k <http://openworm.org/entities/Cell/name> \"' + n + '\". '
+                                # look up its listed type ?v
+                                + '?k <http://openworm.org/entities/Neuron/type> ?v .}'
                                 )
             for x in qres:
                 v = x[0]
@@ -300,28 +296,16 @@ class DataIntegrityTest(unittest.TestCase):
         self.maxDiff = None
         self.assertEqual(sorted(pow_conns), sorted(xls_conns))
 
-    @unittest.skip("deprecated due to performance")
+    #@unittest.skip("deprecated due to performance")
     def test_all_cells_have_wormbaseID(self):
         """ This test verifies that every cell has a Wormbase ID. """
         cells = set(PyOpenWorm.Cell().load())
         for cell in cells:
-            self.assertNotEqual(cell.wormbaseID(), '')
+            wbid = cell.wormbaseID()
+            self.assertIsNotNone(wbid)
+            self.assertNotEqual(wbid, '')
 
-    @unittest.skip("deprecated due to performance")
-    def test_all_neurons_have_wormbaseID(self):
-        """ This test verifies that every neuron has a Wormbase ID. """
-        net = PyOpenWorm.Worm().get_neuron_network()
-        for neuron_object in net.neurons():
-            self.assertNotEqual(neuron_object.wormbaseID(), '')
-
-    @unittest.skip("deprecated due to performance")
-    def test_all_muscles_have_wormbaseID(self):
-        """ This test verifies that every muscle has a Wormbase ID. """
-        muscles = PyOpenWorm.Worm().muscles()
-        for muscle_object in muscles:
-            self.assertNotEqual(muscle_object.wormbaseID(), '')
-
-    @unittest.skip("deprecated due to performance")
+    #@unittest.skip("deprecated due to performance")
     def test_all_neurons_are_cells(self):
         """ This test verifies that all Neuron objects are also Cell objects. """
         net = PyOpenWorm.Worm().get_neuron_network()
@@ -329,7 +313,7 @@ class DataIntegrityTest(unittest.TestCase):
         for neuron_object in net.neurons():
             self.assertIsInstance(neuron_object, PyOpenWorm.Cell)
 
-    @unittest.skip("deprecated due to performance")
+    #@unittest.skip("deprecated due to performance")
     def test_all_muscles_are_cells(self):
         """ This test verifies that all Muscle objects are also Cell objects. """
         muscles = PyOpenWorm.Worm().muscles()
@@ -418,7 +402,7 @@ class DataIntegrityTest(unittest.TestCase):
 
         self.assertEqual(300, len(unique_neurons))
 
-    @unittest.skip("deprecated due to performance")
+    #@unittest.skip("deprecated due to performance")
     def test_unconnected_neurons(self):
         """
         This test verifies that there are exactly 2 unconnected neurons,
@@ -429,11 +413,22 @@ class DataIntegrityTest(unittest.TestCase):
         # That means it should be enough to check that the set {CANL, CANR} and
         # the set of neurons making connections are disjoint.
 
-        synapses = PyOpenWorm.Worm().get_neuron_network().synapses()
-        connected_neurons = set()
-        unconnected_neurons = {'CANL', 'CANR'}
+        #net = PyOpenWorm.Worm().get_neuron_network()
+        #conn = PyOpenWorm.Connection()
+        #c = PyOpenWorm.Cell()
+        #net.synapse(conn)
+        #conn.pre_cell(c)
+        neur = PyOpenWorm.Neuron()
+        expected = {'CANL', 'CANR'}
+        actual = set()
+        for n in neur.name.get():
+            try:
+                conn = PyOpenWorm.Connection()
+                neu = PyOpenWorm.Neuron(name=n)
+                conn.pre_cell(neu)
 
-        for synapse in synapses:
-            connected_neurons.add(synapse.pre_cell())
+                next(conn.load())
+            except StopIteration:
+                actual.add(n)
 
-        self.assertTrue(connected_neurons.isdisjoint(unconnected_neurons))
+        self.assertEqual(expected, actual)
