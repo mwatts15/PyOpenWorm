@@ -98,11 +98,18 @@ class DataObject(GraphObject, DataUser):
     def triples(self, *args, **kwargs):
         return ComponentTripler(self)()
 
+    def full_graph(self, *args, **kwargs):
+        return ComponentTripler(self, only_defined=False)()
+
     def __str__(self):
         s = self.__class__.__name__ + "("
-        s += str(self.namespace_manager.normalizeUri(self.idl))
+        s += str(self.abbreviated_idl)
         s += ")"
         return s
+
+    @property
+    def abbreviated_idl(self):
+        return self.namespace_manager.normalizeUri(self.idl)
 
     def __eq__(self, other):
         return (isinstance(other, DataObject) and
@@ -115,6 +122,12 @@ class DataObject(GraphObject, DataUser):
                 types.add(rdf_type)
             the_type = get_most_specific_rdf_type(types)
             yield oid(ident, the_type)
+
+    def count(self):
+        res = 0
+        for ident in GraphObjectQuerier(self, self.rdf)():
+            res += 1
+        return res
 
     def identifier(self, query=False):
         return self._id
