@@ -114,7 +114,7 @@ class RealSimpleProperty(object):
                 else:
                     r = [deserialize_rdflib_term(x.idl) for x in self.defined_values]
             else:
-                r = self.get(*args, **kwargs)
+                r = self.get()
 
             if self.multiple:
                 return set(r)

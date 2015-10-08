@@ -25,7 +25,7 @@ class Property(DataObject):
     multiple = False
 
     def __init__(self, name=False, owner=False, **kwargs):
-        DataObject.__init__(self, **kwargs)
+        super(Property, self).__init__(**kwargs)
         self.owner = owner
         if self.owner:
             self.owner.properties.append(self)
@@ -34,7 +34,7 @@ class Property(DataObject):
         # XXX: Default implementation is a box for a value
         self._value = False
 
-    def get(self,*args):
+    def get(self, *args):
         """ Get the things which are on the other side of this property
 
         The return value must be iterable. For a ``get`` that just returns
@@ -70,7 +70,7 @@ class Property(DataObject):
         """
         return True
 
-    def __call__(self,*args,**kwargs):
+    def __call__(self, *args, **kwargs):
         """ If arguments are passed to the ``Property``, its ``set`` method
         is called. Otherwise, the ``get`` method is called. If the ``multiple``
         member for the ``Property`` is set to ``True``, then a Python set containing
@@ -78,10 +78,10 @@ class Property(DataObject):
         """
 
         if len(args) > 0 or len(kwargs) > 0:
-            self.set(*args,**kwargs)
+            self.set(*args, **kwargs)
             return self
         else:
-            r = self.get(*args,**kwargs)
+            r = self.get(*args, **kwargs)
             if self.multiple:
                 return set(r)
             else:

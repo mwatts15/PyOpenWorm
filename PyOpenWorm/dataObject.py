@@ -290,6 +290,12 @@ class DataObject(GraphObject, DataUser):
 
         return res
 
+    def attach_property_n(self, c):
+        res = c(owner=self, conf=self.conf, resolver=_Resolver.get_instance())
+        setattr(self, c.linkName, res)
+
+        return res
+
     @classmethod
     def attach_property(self, owner, c):
         # The fake property has the object as owner and the property as value

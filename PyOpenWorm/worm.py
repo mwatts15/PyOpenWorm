@@ -18,9 +18,10 @@ class NeuronNetworkProperty(ObjectProperty):
         self.value_rdf_type = Network.rdf_type
 
     def set(self, v):
-        super(NeuronNetworkProperty, self).set(v)
+        res = super(NeuronNetworkProperty, self).set(v)
         if isinstance(v, Network):
             v.worm(self.owner)
+        return res
 
 
 class Worm(DataObject):

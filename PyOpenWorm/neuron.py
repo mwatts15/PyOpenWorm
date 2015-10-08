@@ -69,7 +69,7 @@ class Neuron(Cell):
         # Get connections from this neuron
         Connection(owner=self)
 
-        Neuron.DatatypeProperty("type",self, multiple=True)
+        Neuron.DatatypeProperty("type", self, multiple=True)
         Neuron.DatatypeProperty("receptor", self, multiple=True)
         Neuron.DatatypeProperty("innexin", self, multiple=True)
         Neuron.DatatypeProperty("neurotransmitter", self, multiple=True)
@@ -85,7 +85,7 @@ class Neuron(Cell):
         :rtype: int
         """
         count = 0
-        for c in self.connection():
+        for c in self.connection.get('post'):
             if c.syntype.one() == 'gapJunction':
                 count += 1
         return count

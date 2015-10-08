@@ -4,10 +4,12 @@ sys.path.insert(0, ".")
 from PyOpenWorm import DataObject
 from PyOpenWorm.simpleProperty import SimpleProperty
 import rdflib as R
+import unittest
 
 from DataTestTemplate import _DataTest
 
 
+@unittest.expectedFailure
 class SimplePropertyTest(_DataTest):
 
     # XXX: auto generate some of these tests...

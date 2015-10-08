@@ -30,7 +30,7 @@ class MuscleTest(_DataTest):
     def test_innervatedBy(self):
         m = Muscle('MDL08')
         n = Neuron('some neuron')
-        m.innervatedBy(n)
+        m.innervatedBy(n, syntype='send')
         m.save()
         v = Muscle(name='MDL08')
         self.assertIn(n, list(v.innervatedBy()))

@@ -147,7 +147,7 @@ Add some evidence::
 lineageName=`AB alaaapalr'
 >>> e.asserts(avdl)
 asserts=`AVDL'
->>> e.asserts(avdl.lineageName) # doctest:+ELLIPSIS
+>>> e.asserts(avdl.lineageName('AB alaaapalr')) # doctest:+ELLIPSIS
 asserts=...
 >>> e.save()
 
@@ -192,7 +192,7 @@ True
 
 See what neurons innervate a muscle::
 ```python
->>> mdr21 = P.Muscle('MDR21')
+>>> mdr21 = P.Muscle('DR21')
 >>> innervates_mdr21 = mdr21.innervatedBy()
 >>> len(innervates_mdr21)
 4
