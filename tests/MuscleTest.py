@@ -1,26 +1,11 @@
 from __future__ import print_function
-import sys
-sys.path.insert(0,".")
-import unittest
-import neuroml
-import neuroml.writers as writers
-import PyOpenWorm
-from PyOpenWorm import *
-import networkx
-import rdflib
-import rdflib as R
-import pint as Q
-import os
-import subprocess as SP
-import subprocess
-import tempfile
-import doctest
 
-from glob import glob
-
-from GraphDBInit import *
+from PyOpenWorm.muscle import Muscle
+from PyOpenWorm.neuron import Neuron
+from PyOpenWorm.connection import SynapseType
 
 from DataTestTemplate import _DataTest
+
 
 class MuscleTest(_DataTest):
 
@@ -34,6 +19,23 @@ class MuscleTest(_DataTest):
         m.save()
         v = Muscle(name='MDL08')
         self.assertIn(n, list(v.innervatedBy()))
+
+    def test_innervatedBy_count(self):
+        m = Muscle('MDL08')
+        m.innervatedBy(Neuron('some neuron'), syntype=SynapseType.Chemical)
+        m.innervatedBy(Neuron('some other neuron'), syntype=SynapseType.Chemical)
+        m.save()
+        v = Muscle(name='MDL08')
+        self.assertEqual(2, v.innervatedBy.count(syntype=SynapseType.Chemical))
+
+    def test_innervatedBy_count_with_args(self):
+        m = Muscle('MDL08')
+        m.innervatedBy(Neuron('some neuron'), syntype=SynapseType.Chemical)
+        m.innervatedBy(Neuron('some other neuron'), syntype=SynapseType.Chemical)
+        m.innervatedBy(Neuron('this neuron here'), syntype=SynapseType.GapJunction)
+        m.save()
+        v = Muscle(name='MDL08')
+        self.assertEqual(2, v.innervatedBy.count(syntype=SynapseType.Chemical))
 
     def test_muscle_neurons(self):
         """ Should be the same as innervatedBy """

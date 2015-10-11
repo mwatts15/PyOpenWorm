@@ -98,7 +98,7 @@ class DataObject(GraphObject, DataUser):
     def triples(self, *args, **kwargs):
         return ComponentTripler(self)()
 
-    def full_graph(self, *args, **kwargs):
+    def full_graph(self):
         return ComponentTripler(self, only_defined=False)()
 
     def __str__(self):

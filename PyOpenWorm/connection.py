@@ -1,10 +1,9 @@
 from __future__ import print_function
 import PyOpenWorm as P
 from .dataObject import DataObject
-from .relationship import Relationship
 from .cell import Cell
 
-__all__ = ['Connection']
+__all__ = ['Connection', 'SynapseType', 'Termination']
 
 
 class SynapseType:

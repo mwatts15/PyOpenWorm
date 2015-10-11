@@ -80,13 +80,12 @@ class InnervatedByProperty(object):
 
     def get(self, **kwargs):
         n = Neuron()
-        #print('muscle', self.owner)
         c = P.Connection(pre_cell=n, post_cell=self.owner, **kwargs)
         res = set(n.load())
         c.post_cell.unset(self.owner)
         return res
 
-    def count(self):
+    def count(self, **kwargs):
         n = Neuron()
         c = P.Connection(pre_cell=n, post_cell=self.owner, **kwargs)
         res = n.count()
