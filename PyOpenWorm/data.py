@@ -21,7 +21,9 @@ import datetime
 import transaction
 import os
 import traceback
-import logging as L
+import logging
+
+L = logging.Logger("PyOpenWorm.data")
 
 __all__ = [
     "Data",
@@ -128,7 +130,11 @@ class DataUser(Configureable):
     def _remove_from_store(self, g):
         # Note the assymetry with _add_to_store. You must add actual elements, but deletes
         # can be performed as a query
-        for group in grouper(g, 1000):
+        statement_count = 1000
+        if self.conf['rdf.store'] == 'SPARQLUpdateStore':
+            statement_count = self.conf.get('rdf.upload_block_statement_count', default=statement_count)
+
+        for group in grouper(g, statement_count):
             temp_graph = Graph()
             for x in group:
                 if x is not None:
@@ -144,18 +150,31 @@ class DataUser(Configureable):
             # XXX With Sesame, for instance, it is probably faster to do a PUT over
             # the endpoint's rest interface. Just need to do it for some common
             # endpoints
+            conf = 'rdf.upload_block_statement_count'
+            default = 50
+            if conf not in self.conf:
+                L.warning("No {conf} in configuration. Defaulting to {default} triples at a time".format(locals()))
 
-            try:
-                gs = g.serialize(format="nt")
-            except:
-                gs = _triples_to_bgp(g)
+            statement_count = self.conf.get(conf, default=default)
 
-            if graph_name:
-                s = " INSERT DATA { GRAPH " + graph_name.n3() + " {" + gs + " } } "
-            else:
-                s = " INSERT DATA { " + gs + " } "
-                L.debug("update query = " + s)
-                self.conf['rdf.graph'].update(s)
+            for group in grouper(g, statement_count):
+                temp_graph = Graph()
+                for x in group:
+                    if x is not None:
+                        temp_graph.add(x)
+                    else:
+                        break
+                try:
+                    gs = temp_graph.serialize(format="nt")
+                except:
+                    gs = _triples_to_bgp(g)
+
+                if graph_name:
+                    s = " INSERT DATA { GRAPH " + graph_name.n3() + " {" + gs + " } } "
+                else:
+                    s = " INSERT DATA { " + gs + " } "
+                    L.debug("update query = " + s)
+                    self.conf['rdf.graph'].update(s)
         else:
             gr = self.conf['rdf.graph']
             for x in g:
@@ -219,7 +238,6 @@ class DataUser(Configureable):
         self._remove_from_store_by_query(graph)
 
     def _remove_from_store_by_query(self, q):
-        import logging as L
         s = " DELETE WHERE {" + q + " } "
         L.debug("deleting. s = " + s)
         self.conf['rdf.graph'].update(s)
@@ -484,15 +502,35 @@ class SPARQLSource(RDFSource):
         ::
 
             "rdf.source" = "sparql_endpoint"
+            "rdf.store_conf" = <your SPARQL endpoint here>
     """
 
     def open(self):
         # XXX: If we have a source that's read only, should we need to set the
         # store separately??
         g0 = ConjunctiveGraph('SPARQLUpdateStore')
-        g0.open(tuple(self.conf['rdf.store_conf']))
+        conf = None
+        store_conf = self.conf['rdf.store_conf']
+        if isinstance(store_conf, list):
+            conf = tuple(store_conf)
+        elif isinstance(store_conf, str):
+            conf = (store_conf,)
+        else:
+            raise Exception("The rdf.store_conf for a SPARQLSource "
+                    "should be of the form "
+                    "'[<query_endpoint>, <update_endpoint>]' "
+                    "'[<sparql_endpoint>]' "
+                    "or '<sparql_endpoint>'")
+
+        g0.open(conf)
+        self.conf['rdf.store'] = 'SPARQLUpdateStore'
         self.graph = g0
         return self.graph
+    def __repr__(self):
+        return "SPARQLSource("+str(self.conf['rdf.store_conf'])+")"
+    def __str__(self):
+        return repr(self)
+
 
 
 class SleepyCatSource(RDFSource):
@@ -506,14 +544,13 @@ class SleepyCatSource(RDFSource):
     """
 
     def open(self):
-        import logging
         # XXX: If we have a source that's read only, should we need to set the
         # store separately??
         g0 = ConjunctiveGraph('Sleepycat')
         self.conf['rdf.store'] = 'Sleepycat'
         g0.open(self.conf['rdf.store_conf'], create=True)
         self.graph = g0
-        logging.debug("Opened SleepyCatSource")
+        L.debug("Opened SleepyCatSource")
 
 
 class SQLiteSource(RDFSource):

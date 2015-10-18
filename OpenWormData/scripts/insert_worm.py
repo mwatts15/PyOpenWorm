@@ -2,11 +2,8 @@ from __future__ import print_function
 import PyOpenWorm as P
 import traceback
 import csv
-import sqlite3
 import re
 
-import xlrd
-import csv
 
 SQLITE_DB_LOC = '../aux_data/celegans.db'
 LINEAGE_LIST_LOC = '../aux_data/C. elegans Cell List - WormAtlas.tsv'
@@ -544,12 +541,15 @@ if __name__ == '__main__':
     parser.add_option("-l", "--do-logging", dest="do_logging",
                       action="store_true", default=False,
                       help="Enable log output")
+    parser.add_option("-c", "--config", dest="config",
+                      action="store", default='default.conf',
+                      help="Set the config file")
 
     (options, _) = parser.parse_args()
     OPTIONS = options
 
     try:
-        do_insert(logging=options.do_logging)
+        do_insert(config=options.config, logging=options.do_logging)
     except IOError as e:
         if e.errno == 2 and 'default.conf' in e.filename:
             print("Couldn't find the 'default.conf' configuration file. You may have attempted to run this script in the wrong directory")
