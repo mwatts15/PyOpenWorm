@@ -22,6 +22,7 @@ import transaction
 import os
 import traceback
 import logging
+from itertools import islice
 
 L = logging.Logger("PyOpenWorm.data")
 
@@ -128,11 +129,11 @@ class DataUser(Configureable):
         self.conf['rdf.graph'] = value
 
     def _remove_from_store(self, g):
-        # Note the assymetry with _add_to_store. You must add actual elements, but deletes
-        # can be performed as a query
         statement_count = 1000
         if self.conf['rdf.store'] == 'SPARQLUpdateStore':
-            statement_count = self.conf.get('rdf.upload_block_statement_count', default=statement_count)
+            statement_count = self.conf.get(
+                'rdf.upload_block_statement_count',
+                default=statement_count)
 
         for group in grouper(g, statement_count):
             temp_graph = Graph()
@@ -145,36 +146,45 @@ class DataUser(Configureable):
             L.debug("deleting. s = " + s)
             self.conf['rdf.graph'].update(s)
 
-    def _add_to_store(self, g, graph_name=False):
+    def _add_to_store(self, g, graph_name=None):
         if self.conf['rdf.store'] == 'SPARQLUpdateStore':
             # XXX With Sesame, for instance, it is probably faster to do a PUT over
             # the endpoint's rest interface. Just need to do it for some common
             # endpoints
+            g = iter(g)
             conf = 'rdf.upload_block_statement_count'
             default = 50
             if conf not in self.conf:
-                L.warning("No {conf} in configuration. Defaulting to {default} triples at a time".format(locals()))
+                L.warning(
+                    "No {conf} in configuration. Defaulting to {default} triples at a time".format(
+                        locals()))
 
             statement_count = self.conf.get(conf, default=default)
 
-            for group in grouper(g, statement_count):
-                temp_graph = Graph()
-                for x in group:
-                    if x is not None:
-                        temp_graph.add(x)
-                    else:
-                        break
+            # default count arrived at experimentally with OpenRDF on an AWS
+            # t2.micro instance with 1 GB of memory. On the PyOpenWorm side,
+            # a socket timeout of 30s was used and the upload statement was
+            # sent 'raw' (without URL encoding). Beyond that, the server ran
+            # out of memory.
+            max_statement_count = self.conf.get('rdf.upload_block_statement_count.max', 65536)
+            method = self.conf['rdf.upload_block_statement_count.method']
+            method_conf = self.conf['rdf.upload_block_statement_count.method_conf']
+            sizer_class = statement_count_methods.get(method, 'constant')
+            slice_sizer = sizer_class(method_conf)
+            next_size = slice_sizer.init_size()
+            while True:
+                group = islice(g, next_size)
                 try:
-                    gs = temp_graph.serialize(format="nt")
-                except:
-                    gs = _triples_to_bgp(g)
-
-                if graph_name:
-                    s = " INSERT DATA { GRAPH " + graph_name.n3() + " {" + gs + " } } "
-                else:
-                    s = " INSERT DATA { " + gs + " } "
-                    L.debug("update query = " + s)
-                    self.conf['rdf.graph'].update(s)
+                    if self._add_to_storeb(group, graph_name) == 0:
+                        break
+                    next_size = slice_sizer.success()
+                except _SliceSizerException as e:
+                    break
+                except: # TODO: Add handling for timeouts
+                    next_size = slice_sizer.failure()
+                if next_size > max_statement_count:
+                    slice_sizer.set_size(max_statement_count)
+                    next_size = max_statement_count
         else:
             gr = self.conf['rdf.graph']
             for x in g:
@@ -186,6 +196,20 @@ class DataUser(Configureable):
             # Fire off a new one
             transaction.begin()
 
+    def _add_to_storeb(self, g, graph_name):
+        gs = ""
+        c = 0
+        for x in g:
+            gs = gs + x[0].n3() + x[1].n3() + x[2].n3() + ". "
+            c += 1
+        if c > 0:
+            if graph_name is not None:
+                s = " INSERT DATA { GRAPH " + graph_name.n3() + " {" + gs + " } } "
+            else:
+                s = " INSERT DATA { " + gs + " } "
+                L.debug("update query = " + s)
+                self.conf['rdf.graph'].update(s)
+        return c
         # infer from the added statements
         # self.infer()
 
@@ -222,7 +246,7 @@ class DataUser(Configureable):
             new_statements.add(
                 (URIRef(reference_iri),
                  ns['asserts'],
-                    statement_node))
+                 statement_node))
 
         self.add_statements(g + new_statements)
 
@@ -261,6 +285,215 @@ class DataUser(Configureable):
         g.add((n, RDF['predicate'], s[1]))
         g.add((n, RDF['object'], s[2]))
         return n
+
+
+class _SliceSizerException(Exception):
+    pass
+
+
+class _SliceSizer(object):
+    """ Provides sizes for the number of statements to send at once through
+    a series of successes and failures in sending
+    """
+    def __init__(self, conf):
+        """ Takes a Configuration object to parameterize the sizer's behavior """
+        self.conf = conf
+        self.count = self.conf.get('rdf.upload_block_statement_count', 1)
+        if self.count < 1:
+            raise ValueError('Configuration value ''rdf.upload_block_statement_count'' must be greater than 0')
+
+        self.sizer_conf = self.conf.get('rdf.upload_block_statement_count.method_conf', {})
+        self.max_retries = self.sizer_conf.get('max_retries', 10)
+
+    def init_size(self):
+        """ Get the initial size for this sizer """
+        raise NotImplementedError()
+
+    def success(self):
+        """ Get the size for this sizer after a success """
+        raise NotImplementedError()
+
+    def failure(self):
+        """ Get the size for this sizer after a failure """
+        raise NotImplementedError()
+
+    def set_size(self):
+        raise NotImplementedError()
+
+
+class _ConstantSizer(_SliceSizer):
+
+    def __init__(self, conf):
+        super(_ConstantSizer, self).__init__(conf)
+        self.retries = 0
+        self.size = self.count
+
+    def init_size(self):
+        return self.size
+
+    def success(self):
+        return self.size
+
+    def failure(self):
+        if self.retries > self.max_retries:
+            raise _SliceSizerException("Max retries reached")
+        self.retries += 1
+        return self.size
+
+    def set_size(self, size):
+        self.size = size
+
+
+class _BinarySearchSizerMixin(object):
+
+    def __init__(self, conf):
+        super(_BinarySearchSizerMixin, self).__init__(conf)
+        self.do_binary_search = False
+        self.binsearchsizer = None
+        self.last_success_size = 0
+        self.last_failure_size = 0
+        self.optimized = False
+        self.retries = 0
+
+    def success(self):
+        self.last_success_size = self.size
+        if not self.optimized:
+            if self.do_binary_search:
+                self.size = self.binsearchsizer.success()
+            else:
+                self.size = super(_BinarySearchSizerMixin, self).success()
+
+            if self.last_success_size == self.size:
+                self.optimized = True
+        return self.size
+
+    def _reset(self):
+        # Reset ourselves
+        self.retries = 0
+        self.do_binary_search = False
+        self.binsearchsizer = None
+        self.optimized = False
+
+    def failure(self):
+        self.last_failure_size = self.size
+        if self.optimized:
+            self.retries += 1
+            if self.retries > self.max_retries:
+                self.size = self.size // 2
+                if self.size == 0:
+                    raise _SliceSizerException("Couldn't find a size on which to transmit")
+                self._reset()
+        elif self.do_binary_search:
+            self.size = self.binsearchsizer.failure()
+            if self.size == self.last_failure_size:
+                self.retries += 1
+            else:
+                self.retries = 0
+            if self.retries > self.max_retries:
+                raise _SliceSizerException('Max retries reached')
+        else:
+            self.do_binary_search = True
+            self.binsearchsizer = _BinarySearchSizer(self.conf, self.last_success_size, self.size)
+            self.size = self.binsearchsizer.failure()
+        return self.size
+
+    def set_size(self, size):
+        self._reset()
+        self.size = size
+
+class _LinearSizer(_SliceSizer):
+
+    def __init__(self, conf):
+        super(_LinearSizer, self).__init__(conf)
+        self.size = self.count
+
+    def init_size(self):
+        return self.count
+
+    def success(self):
+        self.size += self.count
+        return self.size
+
+    def set_size(self, size):
+        self._reset()
+        self.size = size
+
+
+class _GeometricSizer(_SliceSizer):
+
+    def __init__(self, conf):
+        super(_GeometricSizer, self).__init__(conf)
+        self.size = self.count
+
+    def init_size(self):
+        return self.count
+
+    def success(self):
+        self.size *= 2
+        return self.size
+
+    def set_size(self, size):
+        self._reset()
+        self.size = size
+
+
+class _LinearSizerWithBinarySearch(_BinarySearchSizerMixin, _LinearSizer):
+    pass
+
+
+class _GeometricSizerWithBinarySearch(_BinarySearchSizerMixin, _GeometricSizer):
+    pass
+
+
+class _BinarySearchSizer(_SliceSizer):
+    def __init__(self, conf, low, hi):
+        super(_BinarySearchSizer, self).__init__(conf)
+        self.low = low
+        self.init = low
+        self.size = hi
+        self.hi = hi
+
+    def init_size(self):
+        return self.init
+
+    def success(self):
+        self.low = self.size
+        self.size = (self.low + self.hi) // 2
+        return self.size
+
+    def failure(self):
+        self.hi = self.size
+        self.size = (self.low + self.hi) // 2
+        return self.size
+
+
+statement_count_methods = {
+    'linear': {
+        'desc': """Linear increase
+
+        The increments are by rdf.upload_block_statement_count. For a failure,
+        the algorithm begins a binary search between the last success and the
+        last failure to find the maximum count that succeeds. Subsequent
+        failures at that maximum cause a fixed number of retries followed by
+        exponential back-off.
+        """,
+        'class': _LinearSizerWithBinarySearch},
+    'geometric': {
+        'desc': """Geometric increase (doubling)
+
+        For a failure, the algorithm begins a binary search between the last
+        success and the last failure to find the maximum count that succeeds.
+        Subsequent failures at that maximum cause a fixed number of retries
+        followed by exponential back-off.
+        """,
+        'class': _GeometricSizerWithBinarySearch},
+    'constant': {
+        'desc': """Uses rdf.upload_block_statement_count with no variation.
+
+        After a fixed number of retries, the upload simply fails.
+        """,
+        'func': _ConstantSizer}
+}
 
 
 class Data(Configure, Configureable):
@@ -342,7 +575,7 @@ class Data(Configure, Configureable):
         g = nx.DiGraph()
 
         # Neuron table
-        csvfile = file(self.conf['neuronscsv'])
+        csvfile = open(self.conf['neuronscsv'])
 
         reader = csv.reader(csvfile, delimiter=';', quotechar='|')
         for row in reader:
@@ -361,7 +594,7 @@ class Data(Configure, Configureable):
                 g.add_node(row[0], ntype=neurontype)
 
         # Connectome table
-        csvfile = file(self.conf['connectomecsv'])
+        csvfile = open(self.conf['connectomecsv'])
 
         reader = csv.reader(csvfile, delimiter=';', quotechar='|')
         for row in reader:
@@ -508,29 +741,32 @@ class SPARQLSource(RDFSource):
     def open(self):
         # XXX: If we have a source that's read only, should we need to set the
         # store separately??
-        g0 = ConjunctiveGraph('SPARQLUpdateStore')
+        g0 = Graph('SPARQLUpdateStore')
         conf = None
         store_conf = self.conf['rdf.store_conf']
+        # TODO: Use the timeout, Luke
+        timeout = self.conf['rdf.sparql_endpoint.upload_timeout']
         if isinstance(store_conf, list):
             conf = tuple(store_conf)
         elif isinstance(store_conf, str):
             conf = (store_conf,)
         else:
             raise Exception("The rdf.store_conf for a SPARQLSource "
-                    "should be of the form "
-                    "'[<query_endpoint>, <update_endpoint>]' "
-                    "'[<sparql_endpoint>]' "
-                    "or '<sparql_endpoint>'")
+                            "should be of the form "
+                            "'[<query_endpoint>, <update_endpoint>]' "
+                            "'[<sparql_endpoint>]' "
+                            "or '<sparql_endpoint>'")
 
         g0.open(conf)
         self.conf['rdf.store'] = 'SPARQLUpdateStore'
         self.graph = g0
         return self.graph
+
     def __repr__(self):
-        return "SPARQLSource("+str(self.conf['rdf.store_conf'])+")"
+        return "SPARQLSource(" + str(self.conf['rdf.store_conf']) + ")"
+
     def __str__(self):
         return repr(self)
-
 
 
 class SleepyCatSource(RDFSource):

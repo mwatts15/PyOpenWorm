@@ -1,7 +1,10 @@
-import sys
-sys.path.insert(0, ".")
+from __future__ import print_function
 import unittest
 from PyOpenWorm import (DataUser, Configureable, BadConf, Configure)
+from PyOpenWorm.data import (_GeometricSizerWithBinarySearch,
+                             _LinearSizerWithBinarySearch,
+                             _ConstantSizer,
+                             _SliceSizerException)
 import rdflib
 import rdflib as R
 
@@ -97,3 +100,65 @@ class DataUserTest(_DataTest):
             g.add((s, p, o))
         du = DataUser(conf=self.config)
         du.add_statements(g)
+
+    def test_geometric_upload_slice_sizer_binary_search_retries(self):
+        conf = {}
+        ss = _GeometricSizerWithBinarySearch(conf)
+        # starts at 1
+        ss.success() # 2
+        ss.success() # 4
+        ss.success() # 8
+        ss.failure() # Too far, half-back to 6
+        ss.failure() # Too far, half-back to 5
+        ss.failure() # Too far, half-back to 4
+        for i in range(ss.max_retries + 1):
+            try:
+                ss.failure() # Too far, retry 0
+                if i == ss.max_retries:
+                    self.fail(msg="Should have failed here")
+            except _SliceSizerException:
+                self.assertEqual(ss.max_retries, i)
+
+    def test_geometric_upload_slice_sizer_retries_backoff(self):
+        conf = {}
+        ss = _GeometricSizerWithBinarySearch(conf)
+        # starts at 1
+        ss.success() # 2
+        ss.success() # 4
+        ss.success() # 8
+        ss.failure() # Too far, half-back to 6
+        ss.failure() # Too far, half-back to 5
+        ss.success() # 5 is good...
+        ss.success() # it's the best! optimized.
+        for i in range(ss.max_retries + 1):
+            try:
+                sz = ss.failure()
+                if i == ss.max_retries:
+                    self.assertEqual(5 // 2, sz)
+            except _SliceSizerException:
+                self.assertEqual(ss.max_retries, i)
+
+    def test_geometric_upload_slice_sizer_retries_backoff_to_zero(self):
+        """ Test the case where we find an apparent maximum, back off, fail the
+        maximum number of times, and try to back off again.
+        """
+        conf = {}
+        ss = _GeometricSizerWithBinarySearch(conf)
+        # starts at 1
+        ss.success() # 2
+        ss.failure() # Too far, half-back to 6
+        ss.success() # 5 is good...
+        ss.success() # it's the best! optimized.
+        self.assertTrue(ss.optimized)
+        with self.assertRaisesRegexp(_SliceSizerException, '.*size.*'):
+            for _ in range(ss.max_retries + 1):
+                ss.failure()
+
+    def test_geometric_upload_slice_sizer_start_at_zero(self):
+        """ Test the case where we find an apparent maximum, back off, fail the
+        maximum number of times, and try to back off again.
+        """
+        conf = {'rdf.upload_block_statement_count': 0}
+        with self.assertRaisesRegexp(ValueError,
+                '.*rdf\.upload_block_statement_count.*'):
+            _GeometricSizerWithBinarySearch(conf)
