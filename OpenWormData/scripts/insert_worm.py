@@ -521,7 +521,9 @@ def do_insert(config="default.conf", logging=False):
         print("Saving...")
         WORM.save()
 
-        infer()
+        #print("Performing inference...")
+        #infer()
+
         print("Serializing...")
         serialize_as_n3()
 

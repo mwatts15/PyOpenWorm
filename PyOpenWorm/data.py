@@ -1,4 +1,5 @@
 from __future__ import print_function
+
 # A consolidation of the data sources for the project
 # includes:
 # NetworkX!
@@ -8,6 +9,7 @@ from __future__ import print_function
 # Works like Configure:
 # Inherit from the DataUser class to access data of all kinds (listed above)
 
+import sys
 import sqlite3
 import networkx as nx
 import PyOpenWorm
@@ -22,7 +24,12 @@ import transaction
 import os
 import traceback
 import logging
-from itertools import islice
+from itertools import islice, tee
+
+from urllib2 import URLError
+from SPARQLWrapper.SPARQLExceptions import EndPointInternalError
+from socket import error as SocketError
+import errno
 
 L = logging.Logger("PyOpenWorm.data")
 
@@ -167,21 +174,47 @@ class DataUser(Configureable):
             # sent 'raw' (without URL encoding). Beyond that, the server ran
             # out of memory.
             max_statement_count = self.conf.get('rdf.upload_block_statement_count.max', 65536)
-            method = self.conf['rdf.upload_block_statement_count.method']
-            method_conf = self.conf['rdf.upload_block_statement_count.method_conf']
-            sizer_class = statement_count_methods.get(method, 'constant')
-            slice_sizer = sizer_class(method_conf)
+            method = self.conf.get('rdf.upload_block_statement_count.method', 'constant')
+            method_conf = self.conf.get('rdf.upload_block_statement_count.method_conf', {})
+            sizer_class = statement_count_methods[method]['class']
+            slice_sizer = sizer_class(self.conf)
             next_size = slice_sizer.init_size()
+
+            graphs = [g]
+            group = None
+
             while True:
-                group = islice(g, next_size)
+                print(graphs)
+                graphs.append(set(islice(graphs[len(graphs)-1], next_size)))
+
                 try:
-                    if self._add_to_storeb(group, graph_name) == 0:
+                    print("About to add {} statements".format(next_size))
+                    if self._add_to_storeb(graphs[len(graphs)-1], graph_name, next_size) == 0:
                         break
                     next_size = slice_sizer.success()
                 except _SliceSizerException as e:
                     break
-                except: # TODO: Add handling for timeouts
-                    next_size = slice_sizer.failure()
+                except (URLError, EndPointInternalError) as e:
+                    if ("time" in str(e)) or isinstance(e, EndPointInternalError):
+                        next_size = slice_sizer.failure()
+                        graphs.append(graphs[len(graphs)-1])
+                        # TODO: Close and re-open the connection
+                    else:
+                        traceback.print_exc()
+                        break
+                except SocketError as e:
+                    if e.errno != errno.ECONNRESET:
+                        raise
+                    # TODO: Close and re-open the connection
+                    # connection reset errors are (hopefully) transient, so we just
+                    # retry with a new connection
+                    continue
+                except Exception:
+                    traceback.print_exc()
+                    break
+
+                graphs.pop()
+
                 if next_size > max_statement_count:
                     slice_sizer.set_size(max_statement_count)
                     next_size = max_statement_count
@@ -196,22 +229,99 @@ class DataUser(Configureable):
             # Fire off a new one
             transaction.begin()
 
-    def _add_to_storeb(self, g, graph_name):
-        gs = ""
-        c = 0
-        for x in g:
-            gs = gs + x[0].n3() + x[1].n3() + x[2].n3() + ". "
-            c += 1
+    def _add_to_storeb(self, g, graph_name, n_triples):
+        gs = self._serialize_upload_triples(g, n_triples)
+        c = len(gs)
         if c > 0:
             if graph_name is not None:
-                s = " INSERT DATA { GRAPH " + graph_name.n3() + " {" + gs + " } } "
+                s = "INSERT DATA { GRAPH " + graph_name.n3() + " {" + gs + " } } "
             else:
-                s = " INSERT DATA { " + gs + " } "
-                L.debug("update query = " + s)
-                self.conf['rdf.graph'].update(s)
+                s = "INSERT DATA { " + gs + " } "
+            L.debug("update query = " + s)
+            self.conf['rdf.graph'].update(s)
+            self.conf['rdf.graph'].commit()
         return c
         # infer from the added statements
         # self.infer()
+
+    def _serialize_upload_triples(self, g, n_triples, initial_buffer_size=None):
+        """ Serializes triples made of only URIRef and Literal for SPARQL "INSERT DATA" """
+        if initial_buffer_size is None:
+            initial_buffer_size = 24000 # TODO: Allow to configure
+
+        ba = bytearray(initial_buffer_size)
+        stmt_start = 0
+        buf_index = 0
+        stmt_idx = 0
+        while True:
+            try:
+                for (i, t) in enumerate(g):
+                    stmt_idx = i
+                    stmt_start = buf_index
+                    s = t[0].encode('UTF-8')
+                    sl = len(s)
+                    p = t[1].encode('UTF-8')
+                    pl = len(p)
+                    o = t[2].encode('UTF-8')
+                    ol = len(o)
+
+                    ba[buf_index:buf_index+1] = b'<'
+                    buf_index += 1
+                    ba[buf_index:buf_index + sl] = s
+                    buf_index += sl
+                    ba[buf_index:buf_index + 2] = b'><'
+                    buf_index += 2
+                    ba[buf_index:buf_index + pl] = p
+                    buf_index += pl
+                    ba[buf_index:buf_index + 1] = b'>'
+                    buf_index += 1
+                    if isinstance(t[2], Literal):
+                        ba[buf_index:buf_index + 1] = b'"'
+                        buf_index += 1
+                        ba[buf_index:buf_index + ol] = o
+                        buf_index += ol
+                        ba[buf_index:buf_index + 1] = b'"'
+                        buf_index += 1
+                        lang = t[2].language
+                        dt = t[2].datatype
+                        if lang:
+                            enc = lang.encode('UTF-8')
+                            ll = len(enc)
+                            ba[buf_index:buf_index + 1] = b'@'
+                            buf_index += 1
+                            ba[buf_index:buf_index + ll] = enc
+                            buf_index += ll
+                        elif dt:
+                            enc = dt.encode('UTF-8')
+                            ll = len(enc)
+                            ba[buf_index:buf_index + 3] = b'^^<'
+                            buf_index += 3
+                            ba[buf_index:buf_index + ll] = enc
+                            buf_index += ll
+                            ba[buf_index:buf_index + 2] = b'>.'
+                            buf_index += 2
+                        else:
+                            ba[buf_index:buf_index + 1] = b'.'
+                            buf_index += 1
+                    else:
+                        ba[buf_index:buf_index + 1] = b'<'
+                        buf_index += 1
+                        ba[buf_index:buf_index + ol] = o
+                        buf_index += ol
+                        ba[buf_index:buf_index + 2] = b'>.'
+                        buf_index += 2
+            except IndexError:
+                buf_index = stmt_start
+                # estimate how much more we need based on how much we've
+                # used
+                estimate_on_space_needed = (buf_index // stmt_idx) * (n_triples - stmt_idx)
+                ba.extend(bytearray(estimate_on_space_needed))
+                continue
+            break
+        s = ba[0:buf_index].decode('UTF-8')
+        #print(s)
+        return s
+
 
     def infer(self):
         """ Fire FuXi rule engine to infer triples """
@@ -662,7 +772,7 @@ class SerializationSource(RDFSource):
             self.graph = True
             import glob
             # Check the ages of the files. Read the more recent one.
-            g0 = ConjunctiveGraph(store=self.conf['rdf.store'])
+            g0 = ConjunctiveGraph(store=self.conf['rdf.store'], identifier=self.conf['rdf.graph_id'])
             database_store = self.conf['rdf.store_conf']
             source_file = self.conf['rdf.serialization']
             file_format = self.conf['rdf.serialization_format']
@@ -741,11 +851,14 @@ class SPARQLSource(RDFSource):
     def open(self):
         # XXX: If we have a source that's read only, should we need to set the
         # store separately??
-        g0 = Graph('SPARQLUpdateStore')
+        g0 = Graph('SPARQLUpdateStore', identifier=self.conf['rdf.graph_id'])
         conf = None
         store_conf = self.conf['rdf.store_conf']
-        # TODO: Use the timeout, Luke
-        timeout = self.conf['rdf.sparql_endpoint.upload_timeout']
+        timeout_conf = 'rdf.sparql_endpoint.upload_timeout'
+        if timeout_conf in self.conf:
+            g0.store.setTimeout(self.conf[timeout_conf])
+        g0.store.postAsEncoded = False
+
         if isinstance(store_conf, list):
             conf = tuple(store_conf)
         elif isinstance(store_conf, str):
@@ -782,7 +895,7 @@ class SleepyCatSource(RDFSource):
     def open(self):
         # XXX: If we have a source that's read only, should we need to set the
         # store separately??
-        g0 = ConjunctiveGraph('Sleepycat')
+        g0 = ConjunctiveGraph('Sleepycat', identifier=self.conf['rdf.graph_id'])
         self.conf['rdf.store'] = 'Sleepycat'
         g0.open(self.conf['rdf.store_conf'], create=True)
         self.graph = g0
@@ -813,7 +926,7 @@ class SQLiteSource(RDFSource):
         n = self.conf['rdf.namespace']
 
         cur.execute("SELECT DISTINCT ID, Entity FROM tblentity")
-        g0 = ConjunctiveGraph(self.conf['rdf.store'])
+        g0 = ConjunctiveGraph(self.conf['rdf.store'], identifier=self.conf['rdf.graph_id'])
         g0.open(self.conf['rdf.store_conf'], create=True)
 
         for r in cur.fetchall():
@@ -876,7 +989,7 @@ class DefaultSource(RDFSource):
     """
 
     def open(self):
-        self.graph = ConjunctiveGraph(self.conf['rdf.store'])
+        self.graph = ConjunctiveGraph(self.conf['rdf.store'], identifier=self.conf['rdf.graph_id'])
         self.graph.open(self.conf['rdf.store_conf'], create=True)
 
 
@@ -909,7 +1022,7 @@ class ZODBSource(RDFSource):
         self.conn = self.zdb.open()
         root = self.conn.root()
         if 'rdflib' not in root:
-            root['rdflib'] = ConjunctiveGraph('ZODB')
+            root['rdflib'] = ConjunctiveGraph('ZODB', identifier=self.conf['rdf.graph_id'])
         self.graph = root['rdflib']
         try:
             transaction.commit()
@@ -922,6 +1035,7 @@ class ZODBSource(RDFSource):
             transaction.abort()
         transaction.begin()
         self.graph.open(self.path)
+
 
     def close(self):
         if self.graph == False:
