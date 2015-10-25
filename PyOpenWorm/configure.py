@@ -142,7 +142,7 @@ class Configure(object):
                 self[x] = other[x]
         return self
 
-    def get(self, pname, default=False):
+    def get(self, pname, default=None):
         """
         Get some parameter value out by asking for a key
 
@@ -152,10 +152,8 @@ class Configure(object):
         """
         if pname in self._properties:
             return self._properties[pname].get()
-        elif default:
-            return default
         else:
-            raise KeyError(pname)
+            return default
 
 
 class Configureable(object):
